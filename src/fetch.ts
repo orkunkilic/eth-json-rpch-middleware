@@ -4,6 +4,8 @@ import {
   JsonRpcRequest,
 } from 'json-rpc-engine';
 import { EthereumRpcError, ethErrors } from 'eth-rpc-errors';
+import * as RPChCrypto from '@rpch/crypto';
+import SDK from '@rpch/sdk';
 import { timeout } from './utils/timeout';
 import type { Block } from './types';
 
@@ -30,6 +32,22 @@ interface FetchConfig {
   fetchUrl: string;
   fetchParams: Request;
 }
+
+// Create a custom async key-value store
+function createAsyncKeyValStore() {
+  const store = new Map();
+
+  return {
+    async set(key: any, value: any) {
+      store.set(key, value);
+    },
+    async get(key: any) {
+      return store.get(key);
+    },
+  };
+}
+
+const store = createAsyncKeyValStore();
 
 /**
  * Create middleware for sending a JSON-RPC request to the given RPC URL.
@@ -63,11 +81,26 @@ export function createFetchMiddleware({
       originHttpHeaderKey,
     });
 
+    const sdk = new SDK(
+      {
+        crypto: RPChCrypto,
+        client: 'trial',
+        timeout: 20000,
+        discoveryPlatformApiEndpoint: 'http://34.118.94.228:3020/',
+      },
+      store.set,
+      store.get,
+    );
+
+    await sdk.start();
+
     // attempt request multiple times
     const maxAttempts = 5;
     const retryInterval = 1000;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
+        console.log('fetching', fetchUrl, fetchParams);
+        console.log(await sdk.createRequest('ethereum', fetchParams.body));
         const fetchRes = await fetch(fetchUrl, fetchParams);
         // check for http errrors
         checkForHttpErrors(fetchRes);
